@@ -16,6 +16,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import cross_val_score
 
+# local dataset path to extracted data to
 HOUSING_PATH = os.path.join("datasets", "housing")
 
 class DataFrameSelector(BaseEstimator, TransformerMixin):
@@ -60,14 +61,20 @@ class CombinedAttributesAdder(BaseEstimator, TransformerMixin):
             attrNames.append("bedrooms_per_room")
         return attrNames
 
-def split_train_test_by_cat_strat(data, test_ratio, cat_attribute):
-    split = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
-    for train_index, test_index in split.split(data, data[cat_attribute]):
-        return data.loc[train_index], data.loc[test_index]
-
 def load_housing_data(housing_path=HOUSING_PATH):
+    """ Load data from database file and return as Panda DataFrame
+    """
     csv_path = os.path.join(housing_path, "housing.csv")
     return pd.read_csv(csv_path)
+
+def split_train_test_by_cat_strat(data, test_ratio, cat_attribute):
+    """Create train and test set based on category stratified sampling.
+    Test set ratio (0.0 to 1.0) determins of all data that goes to test set.
+    """
+
+    split = StratifiedShuffleSplit(n_splits=1, test_size=test_ratio, random_state=42)
+    for train_index, test_index in split.split(data, data[cat_attribute]):
+        return data.loc[train_index], data.loc[test_index]
 
 def showModelResults(model, training_data_prepared, training_labels, length):
     # Compare prediction
@@ -94,15 +101,22 @@ def showModelRMSE_CrossVal(model, training_data_prepared, training_labels, cv):
     print("Validation Set RMSE Deviation = %.f" % rmse_scores.std())
 
 def main():
+    # Retrieve data from database file as Panda DataFrame
     housing = load_housing_data()
 
-    # split data into train set (80%) and test set (20%) for final unbiased testing
+    # We can do random sampling of data to split between train and test sets
+    # But that could introduce a bias in the median_income data.
+    # To avoid that, we will applying stratified sampling on median income
 
-    # applying stratified sampling on median income to remove bias
+    # We will create the homogeneous subgroups, aka strata
+    # There should be enough strata , but not too many so we don't introduce
+    # bias . We will limit to 5 income categories by deviding data by 1.5 and
+    # ceil to round numbers
     housing["income_cat"] = np.ceil(housing["median_income"] / 1.5)
     housing["income_cat"].where(housing["income_cat"] < 5, 5.0, inplace = True)
 
-    #create train and test set based on category stratified sampling
+    # Create train and test set based on category stratified sampling.
+    # Test set will be 20% and Train set 80% of all data
     train_set, test_set = split_train_test_by_cat_strat(housing, 0.2, "income_cat")
 
     #remove income_cat attribute on both sets
